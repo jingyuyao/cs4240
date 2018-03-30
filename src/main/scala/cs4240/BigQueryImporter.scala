@@ -13,6 +13,7 @@ object BigQueryImporter {
       .appName("cs4240-importer")
       .config("spark.master", "local")
       .getOrCreate()
+
   import sparkSession.implicits._
 
   private val sparkContext = sparkSession.sparkContext
@@ -26,6 +27,9 @@ object BigQueryImporter {
   hadoopConf.set(BigQueryConfiguration.PROJECT_ID_KEY, projectId)
   hadoopConf.set(BigQueryConfiguration.GCS_BUCKET_KEY, bucket)
 
+  def commentInfoLocation(fullyQualifiedInputTableId: String): String =
+    f"gs://cs4240-jm-parquet/comments/${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
+
   def run(fullyQualifiedInputTableId: String): Unit = {
     BigQueryConfiguration.configureBigQueryInput(hadoopConf, fullyQualifiedInputTableId)
 
@@ -36,11 +40,9 @@ object BigQueryImporter {
       classOf[LongWritable],
       classOf[JsonObject])
 
-    val commentInfo = tableData.map({ case (_, json) => rawJsonToCommentInfo(json)})
+    val commentInfo = tableData.map({ case (_, json) => rawJsonToCommentInfo(json) })
     val commentInfoDF = commentInfo.toDF
-
-    val tableReference = BigQueryStrings.parseTableReference(fullyQualifiedInputTableId)
-    commentInfoDF.write.parquet(f"gs://cs4240-jm-parquet/comments/${tableReference.getTableId}/")
+    commentInfoDF.write.parquet(commentInfoLocation(fullyQualifiedInputTableId))
   }
 
   def rawJsonToCommentInfo(json: JsonObject): CommentInfo =
