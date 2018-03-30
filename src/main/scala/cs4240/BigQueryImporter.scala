@@ -1,6 +1,6 @@
 package cs4240
 
-import com.google.cloud.hadoop.io.bigquery.{BigQueryConfiguration, GsonBigQueryInputFormat}
+import com.google.cloud.hadoop.io.bigquery.{BigQueryConfiguration, BigQueryStrings, GsonBigQueryInputFormat}
 import com.google.gson.JsonObject
 import org.apache.hadoop.io.LongWritable
 import org.apache.spark.rdd.RDD
@@ -36,14 +36,21 @@ object BigQueryImporter {
       classOf[LongWritable],
       classOf[JsonObject])
 
-    val names = tableData.map({ case (key, json) =>
-      if (json.has("body"))
-        json.get("body").getAsString
-      else
-        f"no nobody for row key: $key"
-    })
+    val commentInfo = tableData.map({ case (_, json) => rawJsonToCommentInfo(json)})
+    val commentInfoDF = commentInfo.toDF
 
-    val namesDf = names.toDF()
-    namesDf.write.parquet("gs://cs4240-jm-parquet/names/")
+    val tableReference = BigQueryStrings.parseTableReference(fullyQualifiedInputTableId)
+    commentInfoDF.write.parquet(f"gs://cs4240-jm-parquet/comments/${tableReference.getTableId}/")
   }
+
+  def rawJsonToCommentInfo(json: JsonObject): CommentInfo =
+    CommentInfo(
+      subreddit = json.get("subreddit").getAsString,
+      author = json.get("author").getAsString,
+      createdTimestamp = json.get("created_utc").getAsLong,
+      score = json.get("score").getAsLong,
+      timesGilded = json.get("gilded").getAsLong,
+      keywordList = json.get("body").getAsString,
+      sentiment = 0
+    )
 }
