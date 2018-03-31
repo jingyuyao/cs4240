@@ -1,12 +1,16 @@
 package cs4240
 
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.SparkSession
 
 object ParquetImporter {
 
-  def run(fullyQualifiedInputTableId: String): DataFrame = {
-    val sparkSession = SparkSession.builder.appName("cs4240-importer").getOrCreate
+  def run(fullyQualifiedInputTableId: String): Unit = {
+    val sparkSession = SparkSession.builder.appName("cs4240-parquet-importer").getOrCreate
 
-    sparkSession.read.parquet(BigQueryImporter.commentInfoLocation(fullyQualifiedInputTableId))
+    val commentInfo = sparkSession.read.parquet(BigQueryImporter.commentInfoLocation(fullyQualifiedInputTableId))
+
+    commentInfo.take(10).foreach(println)
+
+    sparkSession.stop()
   }
 }

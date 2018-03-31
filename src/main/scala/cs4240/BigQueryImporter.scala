@@ -9,7 +9,7 @@ import edu.stanford.nlp.pipeline.{Annotation, StanfordCoreNLP}
 import edu.stanford.nlp.sentiment.SentimentCoreAnnotations
 import org.apache.hadoop.io.LongWritable
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{SaveMode, SparkSession}
 
 import scala.collection.JavaConverters._
 
@@ -18,7 +18,7 @@ object BigQueryImporter {
     f"gs://cs4240-jm-parquet/comments/${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
 
   def run(fullyQualifiedInputTableId: String): Unit = {
-    val sparkSession = SparkSession.builder.appName("cs4240-importer").getOrCreate
+    val sparkSession = SparkSession.builder.appName("cs4240-bigquery-importer").getOrCreate
     import sparkSession.implicits._
 
     val sparkContext = sparkSession.sparkContext
@@ -47,14 +47,16 @@ object BigQueryImporter {
 
       partitionData.flatMap({ case (_, json) => rawJsonToCommentInfo(nlpPipeline, json) })
     })
-    val commentInfoDF = commentInfo.toDF
-    commentInfoDF.write.parquet(commentInfoLocation(fullyQualifiedInputTableId))
+
+    commentInfo.toDF.write.mode(SaveMode.Overwrite).parquet(commentInfoLocation(fullyQualifiedInputTableId))
+
+    sparkSession.stop()
   }
 
   def rawJsonToCommentInfo(nlpPipeline: StanfordCoreNLP, json: JsonObject): Option[CommentInfo] = {
     val body = json.get("body").getAsString
-    val annotation: Annotation = nlpPipeline.process(body)
-    bodyToKeywordList(annotation) match {
+    val annotation = nlpPipeline.process(body)
+    annotationToKeywordList(annotation) match {
       case Some(keywordList) =>
         Some(CommentInfo(
           subreddit = json.get("subreddit").getAsString,
@@ -63,22 +65,22 @@ object BigQueryImporter {
           score = json.get("score").getAsLong,
           timesGilded = json.get("gilded").getAsLong,
           keywordList = keywordList,
-          sentiment = bodyToSentiment(annotation)
+          sentiment = annotationToSentiment(annotation)
         ))
       case None => None
     }
   }
 
-  def bodyToKeywordList(annotation: Annotation): Option[String] = {
-    val words = annotation.get(classOf[TokensAnnotation]).asScala
-    val keyWords = words.filter(label => Data.languages.contains(label.word.toLowerCase))
+  def annotationToKeywordList(annotation: Annotation): Option[String] = {
+    val words = annotation.get(classOf[TokensAnnotation]).asScala.map(_.word.toLowerCase)
+    val keyWords = words.filter(Data.languages.contains)
     if (keyWords.nonEmpty)
       Some(keyWords.mkString(","))
     else
       None
   }
 
-  def bodyToSentiment(annotation: Annotation): String = {
+  def annotationToSentiment(annotation: Annotation): String = {
     val sentences = annotation.get(classOf[SentencesAnnotation]).asScala
     val sentiments = sentences.map(sentence => sentence.get(classOf[SentimentCoreAnnotations.SentimentClass]))
     sentiments.mkString(",")
