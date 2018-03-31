@@ -14,34 +14,23 @@ import org.apache.spark.sql.SparkSession
 import scala.collection.JavaConverters._
 
 object BigQueryImporter {
-  private val sparkSession =
-    SparkSession
-      .builder()
-      .master("local")
-      .appName("cs4240-importer")
-      .getOrCreate()
-
-  import sparkSession.implicits._
-
-  private val sparkContext = sparkSession.sparkContext
-  private val hadoopConf = sparkContext.hadoopConfiguration
-
-  // Input parameters.
-  private val projectId = hadoopConf.get("fs.gs.project.id")
-  private val bucket = hadoopConf.get("fs.gs.system.bucket")
-
-  // Input configuration.
-  hadoopConf.set(BigQueryConfiguration.PROJECT_ID_KEY, projectId)
-  hadoopConf.set(BigQueryConfiguration.GCS_BUCKET_KEY, bucket)
-
-  val nlpProps = new Properties()
-  nlpProps.setProperty("annotators", "tokenize,ssplit,pos,parse,sentiment")
-  val nlpPipeline = new StanfordCoreNLP(nlpProps)
-
   def commentInfoLocation(fullyQualifiedInputTableId: String): String =
     f"gs://cs4240-jm-parquet/comments/${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
 
   def run(fullyQualifiedInputTableId: String): Unit = {
+    val sparkSession = SparkSession.builder.appName("cs4240-importer").getOrCreate
+    import sparkSession.implicits._
+
+    val sparkContext = sparkSession.sparkContext
+    val hadoopConf = sparkContext.hadoopConfiguration
+
+    // Input parameters.
+    val projectId = hadoopConf.get("fs.gs.project.id")
+    val bucket = hadoopConf.get("fs.gs.system.bucket")
+
+    // Input configuration.
+    hadoopConf.set(BigQueryConfiguration.PROJECT_ID_KEY, projectId)
+    hadoopConf.set(BigQueryConfiguration.GCS_BUCKET_KEY, bucket)
     BigQueryConfiguration.configureBigQueryInput(hadoopConf, fullyQualifiedInputTableId)
 
     // Load data from BigQuery.
@@ -51,12 +40,18 @@ object BigQueryImporter {
       classOf[LongWritable],
       classOf[JsonObject])
 
-    val commentInfo = tableData.flatMap({ case (_, json) => rawJsonToCommentInfo(json) })
+    val commentInfo = tableData.mapPartitions(partitionData => {
+      val nlpProps = new Properties()
+      nlpProps.setProperty("annotators", "tokenize,ssplit,pos,parse,sentiment")
+      val nlpPipeline = new StanfordCoreNLP(nlpProps)
+
+      partitionData.flatMap({ case (_, json) => rawJsonToCommentInfo(nlpPipeline, json) })
+    })
     val commentInfoDF = commentInfo.toDF
     commentInfoDF.write.parquet(commentInfoLocation(fullyQualifiedInputTableId))
   }
 
-  def rawJsonToCommentInfo(json: JsonObject): Option[CommentInfo] = {
+  def rawJsonToCommentInfo(nlpPipeline: StanfordCoreNLP, json: JsonObject): Option[CommentInfo] = {
     val body = json.get("body").getAsString
     val annotation: Annotation = nlpPipeline.process(body)
     bodyToKeywordList(annotation) match {
@@ -76,7 +71,7 @@ object BigQueryImporter {
 
   def bodyToKeywordList(annotation: Annotation): Option[String] = {
     val words = annotation.get(classOf[TokensAnnotation]).asScala
-    val keyWords = words.filter(label => Data.languages.contains(label.originalText().toLowerCase))
+    val keyWords = words.filter(label => Data.languages.contains(label.word.toLowerCase))
     if (keyWords.nonEmpty)
       Some(keyWords.mkString(","))
     else
