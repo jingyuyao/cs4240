@@ -62,5 +62,5 @@ case class CommentInfo(subreddit: String, // subreddit
                        score: Long, // score
                        timesGilded: Long, // gilded
                        keywordList: String, // body
-                       sentiment: Int // body
+                       sentiment: String // body
                       )
