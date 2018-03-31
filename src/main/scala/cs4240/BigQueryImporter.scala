@@ -17,8 +17,8 @@ object BigQueryImporter {
   private val sparkSession =
     SparkSession
       .builder()
+      .master("local")
       .appName("cs4240-importer")
-      .config("spark.master", "local")
       .getOrCreate()
 
   import sparkSession.implicits._
@@ -34,6 +34,10 @@ object BigQueryImporter {
   hadoopConf.set(BigQueryConfiguration.PROJECT_ID_KEY, projectId)
   hadoopConf.set(BigQueryConfiguration.GCS_BUCKET_KEY, bucket)
 
+  val nlpProps = new Properties()
+  nlpProps.setProperty("annotators", "tokenize,ssplit,pos,parse,sentiment")
+  val nlpPipeline = new StanfordCoreNLP(nlpProps)
+
   def commentInfoLocation(fullyQualifiedInputTableId: String): String =
     f"gs://cs4240-jm-parquet/comments/${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
 
@@ -47,21 +51,12 @@ object BigQueryImporter {
       classOf[LongWritable],
       classOf[JsonObject])
 
-    val commentInfo = tableData.mapPartitions(data => {
-      val nlpProps = new Properties()
-      nlpProps.setProperty("annotators", "tokenize,ssplit,pos,parse,sentiment")
-      val nlpPipeline = new StanfordCoreNLP(nlpProps)
-
-      data.flatMap({ case (_, json) =>
-        rawJsonToCommentInfo(nlpPipeline, json)
-      })
-    })
-
+    val commentInfo = tableData.flatMap({ case (_, json) => rawJsonToCommentInfo(json) })
     val commentInfoDF = commentInfo.toDF
     commentInfoDF.write.parquet(commentInfoLocation(fullyQualifiedInputTableId))
   }
 
-  def rawJsonToCommentInfo(nlpPipeline: StanfordCoreNLP, json: JsonObject): Option[CommentInfo] = {
+  def rawJsonToCommentInfo(json: JsonObject): Option[CommentInfo] = {
     val body = json.get("body").getAsString
     val annotation: Annotation = nlpPipeline.process(body)
     bodyToKeywordList(annotation) match {

@@ -6,8 +6,8 @@ object ParquetImporter {
   private val sparkSession =
     SparkSession
       .builder()
+      .master("local")
       .appName("cs4240-importer")
-      .config("spark.master", "local")
       .getOrCreate()
 
   def run(fullyQualifiedInputTableId: String): DataFrame =
