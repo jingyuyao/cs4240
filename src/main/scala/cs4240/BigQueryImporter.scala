@@ -14,8 +14,10 @@ import org.apache.spark.sql.{SaveMode, SparkSession}
 import scala.collection.JavaConverters._
 
 object BigQueryImporter {
+  val commentInfoRoot = "gs://cs4240-jm-parquet/comments/"
+
   def commentInfoLocation(fullyQualifiedInputTableId: String): String =
-    f"gs://cs4240-jm-parquet/comments/${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
+    f"$commentInfoRoot${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
 
   def run(fullyQualifiedInputTableId: String): Unit = {
     val sparkSession = SparkSession.builder.appName("cs4240-bigquery-importer").getOrCreate
@@ -54,20 +56,25 @@ object BigQueryImporter {
   }
 
   def rawJsonToCommentInfo(nlpPipeline: StanfordCoreNLP, json: JsonObject): Option[CommentInfo] = {
-    val body = json.get("body").getAsString
-    val annotation = nlpPipeline.process(body)
-    annotationToKeywordList(annotation) match {
-      case Some(keywordList) =>
-        Some(CommentInfo(
-          subreddit = json.get("subreddit").getAsString,
-          author = json.get("author").getAsString,
-          createdTimestamp = json.get("created_utc").getAsLong,
-          score = json.get("score").getAsLong,
-          timesGilded = json.get("gilded").getAsLong,
-          keywordList = keywordList,
-          sentiment = annotationToSentiment(annotation)
-        ))
-      case None => None
+    val subreddit = json.get("subreddit").getAsString.toLowerCase
+    if (Data.subreddits.contains(subreddit)) {
+      val body = json.get("body").getAsString
+      val annotation = nlpPipeline.process(body)
+      annotationToKeywordList(annotation) match {
+        case Some(keywordList) =>
+          Some(CommentInfo(
+            subreddit = subreddit,
+            author = json.get("author").getAsString,
+            createdTimestamp = json.get("created_utc").getAsLong,
+            score = json.get("score").getAsLong,
+            timesGilded = json.get("gilded").getAsLong,
+            keywordList = keywordList,
+            sentiment = annotationToSentiment(annotation)
+          ))
+        case None => None
+      }
+    } else {
+      None
     }
   }
 
