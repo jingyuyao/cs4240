@@ -5,6 +5,7 @@ import java.util.Properties
 import com.google.cloud.hadoop.io.bigquery.{BigQueryConfiguration, BigQueryStrings, GsonBigQueryInputFormat}
 import com.google.gson.JsonObject
 import edu.stanford.nlp.ling.CoreAnnotations.{SentencesAnnotation, TokensAnnotation}
+import edu.stanford.nlp.neural.rnn.RNNCoreAnnotations
 import edu.stanford.nlp.pipeline.{Annotation, StanfordCoreNLP}
 import edu.stanford.nlp.sentiment.SentimentCoreAnnotations
 import org.apache.hadoop.io.LongWritable
@@ -15,6 +16,10 @@ import scala.collection.JavaConverters._
 
 object BigQueryImporter {
   val commentInfoRoot = "gs://cs4240-jm-parquet/comments/"
+
+  private val nlpProps = new Properties()
+  nlpProps.setProperty("annotators", "tokenize, ssplit, pos, parse, sentiment")
+  private val nlpPipeline = new StanfordCoreNLP(nlpProps)
 
   def commentInfoLocation(fullyQualifiedInputTableId: String): String =
     f"$commentInfoRoot${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
@@ -42,20 +47,14 @@ object BigQueryImporter {
       classOf[LongWritable],
       classOf[JsonObject])
 
-    val commentInfo = tableData.mapPartitions(partitionData => {
-      val nlpProps = new Properties()
-      nlpProps.setProperty("annotators", "tokenize,ssplit,pos,parse,sentiment")
-      val nlpPipeline = new StanfordCoreNLP(nlpProps)
-
-      partitionData.flatMap({ case (_, json) => rawJsonToCommentInfo(nlpPipeline, json) })
-    })
+    val commentInfo = tableData.flatMap({ case (_, json) => rawJsonToCommentInfo(json) })
 
     commentInfo.toDF.write.mode(SaveMode.Overwrite).parquet(commentInfoLocation(fullyQualifiedInputTableId))
 
     sparkSession.stop()
   }
 
-  def rawJsonToCommentInfo(nlpPipeline: StanfordCoreNLP, json: JsonObject): Option[CommentInfo] = {
+  def rawJsonToCommentInfo(json: JsonObject): Option[CommentInfo] = {
     val subreddit = json.get("subreddit").getAsString.toLowerCase
     if (Data.subreddits.contains(subreddit)) {
       val annotation = nlpPipeline.process(json.get("body").getAsString)
@@ -86,7 +85,10 @@ object BigQueryImporter {
 
   def annotationToSentiment(annotation: Annotation): String = {
     val sentences = annotation.get(classOf[SentencesAnnotation]).asScala
-    val sentiments = sentences.map(sentence => sentence.get(classOf[SentimentCoreAnnotations.SentimentClass]))
+    val sentiments =
+      sentences
+        .map(sentence => sentence.get(classOf[SentimentCoreAnnotations.SentimentAnnotatedTree]))
+        .map(RNNCoreAnnotations.getPredictedClass)
     sentiments.mkString(",")
   }
 }
