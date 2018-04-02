@@ -6,7 +6,7 @@ import com.google.cloud.hadoop.io.bigquery.{BigQueryConfiguration, BigQueryStrin
 import com.google.gson.JsonObject
 import edu.stanford.nlp.ling.CoreAnnotations.{SentencesAnnotation, TokensAnnotation}
 import edu.stanford.nlp.neural.rnn.RNNCoreAnnotations
-import edu.stanford.nlp.pipeline.{Annotation, StanfordCoreNLP}
+import edu.stanford.nlp.pipeline.StanfordCoreNLP
 import edu.stanford.nlp.sentiment.SentimentCoreAnnotations
 import org.apache.hadoop.io.LongWritable
 import org.apache.spark.rdd.RDD
@@ -17,11 +17,15 @@ import scala.collection.JavaConverters._
 object BigQueryImporter {
   val commentInfoRoot = "gs://cs4240-jm-parquet/comments/"
 
-  private val nlpProps = new Properties()
-  nlpProps.setProperty("annotators", "tokenize, ssplit, pos, parse, sentiment")
-  nlpProps.setProperty("pos.maxlen", "70")
-  nlpProps.setProperty("parse.maxlen", "70")
-  private val nlpPipeline = new StanfordCoreNLP(nlpProps)
+  private val tokenProps = new Properties()
+  tokenProps.setProperty("annotators", "tokenize")
+  private val tokenPipeline = new StanfordCoreNLP(tokenProps)
+
+  private val sentProps = new Properties()
+  sentProps.setProperty("annotators", "tokenize, ssplit, pos, parse, sentiment")
+  sentProps.setProperty("pos.maxlen", "70")
+  sentProps.setProperty("parse.maxlen", "70")
+  private val sentPipeline = new StanfordCoreNLP(sentProps)
 
   def commentInfoLocation(fullyQualifiedInputTableId: String): String =
     f"$commentInfoRoot${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
@@ -59,8 +63,8 @@ object BigQueryImporter {
   def rawJsonToCommentInfo(json: JsonObject): Option[CommentInfo] = {
     val subreddit = json.get("subreddit").getAsString.toLowerCase
     if (Data.subreddits.contains(subreddit)) {
-      val annotation = nlpPipeline.process(json.get("body").getAsString)
-      annotationToKeywordList(annotation).map(
+      val body = json.get("body").getAsString
+      annotationToKeywordList(body).map(
         keywordList =>
           CommentInfo(
             subreddit = subreddit,
@@ -69,14 +73,15 @@ object BigQueryImporter {
             score = json.get("score").getAsLong,
             timesGilded = json.get("gilded").getAsLong,
             keywordList = keywordList,
-            sentiment = annotationToSentiment(annotation)
+            sentiment = annotationToSentiment(body)
           ))
     } else {
       None
     }
   }
 
-  def annotationToKeywordList(annotation: Annotation): Option[String] = {
+  def annotationToKeywordList(body: String): Option[String] = {
+    val annotation = tokenPipeline.process(body)
     val words = annotation.get(classOf[TokensAnnotation]).asScala.map(_.word.toLowerCase)
     val keyWords = words.filter(Data.languages.contains)
     if (keyWords.nonEmpty)
@@ -85,7 +90,8 @@ object BigQueryImporter {
       None
   }
 
-  def annotationToSentiment(annotation: Annotation): String = {
+  def annotationToSentiment(body: String): String = {
+    val annotation = sentPipeline.process(body)
     val sentences = annotation.get(classOf[SentencesAnnotation]).asScala
     val sentiments =
       sentences
