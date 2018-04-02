@@ -18,8 +18,9 @@ object BigQueryImporter {
   val commentInfoRoot = "gs://cs4240-jm-parquet/comments/"
 
   private val nlpProps = new Properties()
-  nlpProps.setProperty("annotators", "tokenize")
-//  nlpProps.setProperty("annotators", "tokenize, ssplit, pos, parse, sentiment")
+  nlpProps.setProperty("annotators", "tokenize, ssplit, pos, parse, sentiment")
+  nlpProps.setProperty("pos.maxlen", "70")
+  nlpProps.setProperty("parse.maxlen", "70")
   private val nlpPipeline = new StanfordCoreNLP(nlpProps)
 
   def commentInfoLocation(fullyQualifiedInputTableId: String): String =
@@ -68,8 +69,7 @@ object BigQueryImporter {
             score = json.get("score").getAsLong,
             timesGilded = json.get("gilded").getAsLong,
             keywordList = keywordList,
-            sentiment = ""
-//            sentiment = annotationToSentiment(annotation)
+            sentiment = annotationToSentiment(annotation)
           ))
     } else {
       None
