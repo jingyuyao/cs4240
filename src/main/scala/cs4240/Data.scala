@@ -55,6 +55,12 @@ object Data {
   )
 
   val subreddits: Set[String] = Set(
+    // general
+    "programming",
+    "technology",
+    "coding",
+    "compsci",
+    "gamedev",
     // jvm
     "java",
     "scala",

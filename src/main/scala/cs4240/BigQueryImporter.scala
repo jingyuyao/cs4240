@@ -58,11 +58,10 @@ object BigQueryImporter {
   def rawJsonToCommentInfo(nlpPipeline: StanfordCoreNLP, json: JsonObject): Option[CommentInfo] = {
     val subreddit = json.get("subreddit").getAsString.toLowerCase
     if (Data.subreddits.contains(subreddit)) {
-      val body = json.get("body").getAsString
-      val annotation = nlpPipeline.process(body)
-      annotationToKeywordList(annotation) match {
-        case Some(keywordList) =>
-          Some(CommentInfo(
+      val annotation = nlpPipeline.process(json.get("body").getAsString)
+      annotationToKeywordList(annotation).map(
+        keywordList =>
+          CommentInfo(
             subreddit = subreddit,
             author = json.get("author").getAsString,
             createdTimestamp = json.get("created_utc").getAsLong,
@@ -71,8 +70,6 @@ object BigQueryImporter {
             keywordList = keywordList,
             sentiment = annotationToSentiment(annotation)
           ))
-        case None => None
-      }
     } else {
       None
     }
