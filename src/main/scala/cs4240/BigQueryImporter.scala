@@ -19,13 +19,13 @@ object BigQueryImporter {
 
   private val tokenProps = new Properties()
   tokenProps.setProperty("annotators", "tokenize")
-  private val tokenPipeline = new StanfordCoreNLP(tokenProps)
+  private lazy val tokenPipeline = new StanfordCoreNLP(tokenProps)
 
   private val sentProps = new Properties()
   sentProps.setProperty("annotators", "tokenize, ssplit, pos, parse, sentiment")
   sentProps.setProperty("pos.maxlen", "70")
   sentProps.setProperty("parse.maxlen", "70")
-  private val sentPipeline = new StanfordCoreNLP(sentProps)
+  private lazy val sentPipeline = new StanfordCoreNLP(sentProps)
 
   def commentInfoLocation(fullyQualifiedInputTableId: String): String =
     f"$commentInfoRoot${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
