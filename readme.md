@@ -2,11 +2,18 @@
 Install the `gcloud` commandline tool.
 
 # How to run on Google Cloud DataProc
-`./submit.sh --region {cluster-region} --cluster {cluster-name} --properties={spark-properties}`
+```
+sbt assembly
+./submit.sh --region {cluster-region} --cluster {cluster-name} --properties={spark-properties}
+```
 
-E.g. `./submit.sh --region northamerica-northeast1 --cluster final-project --properties=spark.driver.memory=10g,spark.executor.memory=10g`
+E.g. 
+```
+sbt assembly
+./submit.sh --region northamerica-northeast1 --cluster final-project --properties=spark.driver.memory=10g,spark.executor.memory=10g
+```
 
-See `gcloud dataproc jobs submit spark --help` for more options.
+See `gcloud dataproc jobs submit spark --help` for more options. `sbt assembly` may be skipped if the code was not changed.
 
 # How to access Spark UI
 

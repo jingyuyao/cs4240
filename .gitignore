@@ -1,4 +1,5 @@
 ### Example user template
+*.rules~
 # IntelliJ project files
 .idea
 *.iml
