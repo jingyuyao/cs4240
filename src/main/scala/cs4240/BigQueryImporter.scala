@@ -64,7 +64,7 @@ object BigQueryImporter {
     val subreddit = json.get("subreddit").getAsString.toLowerCase
     if (Data.subreddits.contains(subreddit)) {
       val body = json.get("body").getAsString
-      annotationToKeywordList(body).map(
+      bodyToKeywordList(body).map(
         keywordList =>
           CommentInfo(
             subreddit = subreddit,
@@ -73,14 +73,15 @@ object BigQueryImporter {
             score = json.get("score").getAsLong,
             timesGilded = json.get("gilded").getAsLong,
             keywordList = keywordList,
-            sentiment = annotationToSentiment(body)
+            sentiment = bodyToSentiment(body)
           ))
     } else {
       None
     }
   }
 
-  def annotationToKeywordList(body: String): Option[String] = {
+  /** Returns a comma separated string of keywords, if any. */
+  def bodyToKeywordList(body: String): Option[String] = {
     val annotation = tokenPipeline.process(body)
     val words = annotation.get(classOf[TokensAnnotation]).asScala.map(_.word.toLowerCase)
     val keyWords = words.filter(Data.languages.contains)
@@ -90,7 +91,8 @@ object BigQueryImporter {
       None
   }
 
-  def annotationToSentiment(body: String): String = {
+  /** Returns a comma separated string of sentiment values. */
+  def bodyToSentiment(body: String): String = {
     val annotation = sentPipeline.process(body)
     val sentences = annotation.get(classOf[SentencesAnnotation]).asScala
     val sentiments =
