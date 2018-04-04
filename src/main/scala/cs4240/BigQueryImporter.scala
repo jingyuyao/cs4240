@@ -30,7 +30,7 @@ object BigQueryImporter {
   def commentInfoLocation(fullyQualifiedInputTableId: String): String =
     f"$commentInfoRoot${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
 
-  def run(fullyQualifiedInputTableId: String): Unit = {
+  def run(fullyQualifiedInputTableIds: Array[String]): Unit = {
     val sparkSession = SparkSession.builder.appName("cs4240-bigquery-importer").getOrCreate
     import sparkSession.implicits._
 
@@ -44,23 +44,26 @@ object BigQueryImporter {
     // Input configuration.
     hadoopConf.set(BigQueryConfiguration.PROJECT_ID_KEY, projectId)
     hadoopConf.set(BigQueryConfiguration.GCS_BUCKET_KEY, bucket)
-    BigQueryConfiguration.configureBigQueryInput(hadoopConf, fullyQualifiedInputTableId)
 
-    // Load data from BigQuery.
-    val tableData: RDD[(LongWritable, JsonObject)] = sparkContext.newAPIHadoopRDD(
-      hadoopConf,
-      classOf[GsonBigQueryInputFormat],
-      classOf[LongWritable],
-      classOf[JsonObject])
+    fullyQualifiedInputTableIds.foreach(fullyQualifiedInputTableId => {
+      BigQueryConfiguration.configureBigQueryInput(hadoopConf, fullyQualifiedInputTableId)
 
-    val commentInfo = tableData.flatMap({ case (_, json) => rawJsonToCommentInfo(json) })
+      // Load data from BigQuery.
+      val tableData: RDD[(LongWritable, JsonObject)] = sparkContext.newAPIHadoopRDD(
+        hadoopConf,
+        classOf[GsonBigQueryInputFormat],
+        classOf[LongWritable],
+        classOf[JsonObject])
 
-    commentInfo.toDF.write.mode(SaveMode.Overwrite).parquet(commentInfoLocation(fullyQualifiedInputTableId))
+      val commentInfo = tableData.flatMap({ case (_, json) => rawJsonToCommentInfo(json) })
+
+      commentInfo.toDF.write.mode(SaveMode.Overwrite).parquet(commentInfoLocation(fullyQualifiedInputTableId))
+    })
 
     sparkSession.stop()
   }
 
-  def rawJsonToCommentInfo(json: JsonObject): Option[CommentInfo] = {
+  private def rawJsonToCommentInfo(json: JsonObject): Option[CommentInfo] = {
     val subreddit = json.get("subreddit").getAsString.toLowerCase
     if (Data.subreddits.contains(subreddit)) {
       val body = json.get("body").getAsString
@@ -81,7 +84,7 @@ object BigQueryImporter {
   }
 
   /** Returns a comma separated string of keywords, if any. */
-  def bodyToKeywordList(body: String): Option[String] = {
+  private def bodyToKeywordList(body: String): Option[String] = {
     val annotation = tokenPipeline.process(body)
     val words = annotation.get(classOf[TokensAnnotation]).asScala.map(_.word.toLowerCase)
     val keyWords = words.filter(Data.languages.contains)
@@ -92,7 +95,7 @@ object BigQueryImporter {
   }
 
   /** Returns a comma separated string of sentiment values. */
-  def bodyToSentiment(body: String): String = {
+  private def bodyToSentiment(body: String): String = {
     val annotation = sentPipeline.process(body)
     val sentences = annotation.get(classOf[SentencesAnnotation]).asScala
     val sentiments =

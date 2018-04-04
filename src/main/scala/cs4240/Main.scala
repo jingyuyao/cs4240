@@ -4,13 +4,13 @@ object Main {
 
   // fh-bigquery:reddit_comments.2009
   def main(args: Array[String]): Unit = {
-    require(args.length == 2)
+    require(args.length > 1)
     val op = args.head.toLowerCase
-    val table = args(1)
-    println(f"Running $op on $table")
+    val tables = args.slice(1, args.length)
+    println(f"Running $op on $tables")
     op match {
-      case "import" => BigQueryImporter.run(table)
-      case "analyze" => CommentAnalysis.run(table)
+      case "import" => BigQueryImporter.run(tables)
+      case "analyze" => CommentAnalysis.run(tables)
       case _ => throw new IllegalArgumentException("unsupported op")
     }
   }
