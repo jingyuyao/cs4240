@@ -46,6 +46,7 @@ object BigQueryImporter {
     hadoopConf.set(BigQueryConfiguration.GCS_BUCKET_KEY, bucket)
 
     fullyQualifiedInputTableIds.foreach(fullyQualifiedInputTableId => {
+      println(f"Processing $fullyQualifiedInputTableId ...")
       BigQueryConfiguration.configureBigQueryInput(hadoopConf, fullyQualifiedInputTableId)
 
       // Load data from BigQuery.
