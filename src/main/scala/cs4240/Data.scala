@@ -122,3 +122,12 @@ case class CommentInfo(subreddit: String, // subreddit
                        keywordList: String, // body
                        sentiment: String // body
                       )
+
+case class LanguageUsageInfo(subreddit: String,
+                             author: String,
+                             createdTimestamp: Long,
+                             score: Long,
+                             timesGilded: Long,
+                             language: String,
+                             sentiment: Int
+                            )
