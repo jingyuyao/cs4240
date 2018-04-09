@@ -1,5 +1,7 @@
 package cs4240
 
+import java.time.{Instant, YearMonth}
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 
@@ -52,7 +54,7 @@ object CommentAnalysis {
     /**
       * ((Langauge, Subreddit), (Avg Score, Avg Gildings, Avg Sentiment))
       */
-    lazy val subLangPairs: RDD[((String, String), (Double, Double, Double))] = {
+    lazy val subLangPairs: RDD[((String, String), (Double, Double, Double, Int))] = {
       langScoresInfo.map(usage => {
         ((usage.language, usage.subreddit), (usage.score, usage.timesGilded, usage.sentiment, 1))
       }).reduceByKey({ case ((scoreA, gildA, sentiA, countA), (scoreB, gildB, sentiB, countB)) =>
@@ -62,20 +64,54 @@ object CommentAnalysis {
           countA + countB
         )
       }).mapValues({ case (score, gild, senti, count) =>
-        (1.0 * score / count, 1.0 * gild / count, 1.0 * senti / count)
+        (1.0 * score / count, 1.0 * gild / count, 1.0 * senti / count, count)
       })
     }
 
-    println("Sample:")
-    commentInfo.take(20).foreach(println)
+    lazy val topLanguages =
+      langOverall
+        .sortBy(_._2._3, ascending = false)
+        .map({ case (lang, avgs) =>
+          (lang, avgs._3)
+        })
 
-    println(f"Count: ${commentInfo.count()}")
+    //    topLanguages.take(10).foreach({ case (lang, sentiAvg) => println(f"$lang $sentiAvg") })
 
-    //Map Value first?
-    //Print top 10 languages by overall sentiment
-    langOverall.sortBy(_._2._3, ascending = false).take(10).map({ case (lang, avgs) =>
-      (lang, avgs._3)
-    }).foreach({ case (lang, sentiAvg) => println(f"$lang $sentiAvg") })
+    lazy val mostHatedPerSub: RDD[(String, (String, Double))] =
+      subLangPairs
+        .filter(_._2._4 >= 40)
+        .map({ case (langSub, scores) => (langSub._2, (langSub._1, scores._3)) })
+        .reduceByKey((l, r) => if (l._2 < r._2) l else r)
+        .sortBy(_._1)
+
+    //    mostHatedPerSub.collect().foreach(println)
+
+    lazy val mostLovePerSub: RDD[(String, (String, Double))] =
+      subLangPairs
+        .filter(_._2._4 >= 40)
+        .map({ case (langSub, scores) => (langSub._2, (langSub._1, scores._3)) })
+        .reduceByKey((l, r) => if (l._2 > r._2) l else r)
+        .sortBy(_._1)
+
+//    mostLovePerSub.collect().foreach(println)
+
+    lazy val classicJvC =
+      subLangPairs
+        .filter(d => (d._1._2 == "java" && d._1._1 == "c++") || (d._1._2 == "cpp" && d._1._1 == "java"))
+
+    classicJvC.collect().foreach(println)
+
+    val oldLanguages = Set("cobol", "fortran", "ada", "assembly")
+    val stdLanguages = Set("c", "c++", "java", "python")
+    val newLanguages = Set("scala", "go", "swift", "kotlin", "rust")
+    lazy val oldSentOvertime =
+      langScoresInfo
+      .filter(l => oldLanguages.contains(l.language))
+      .map(l => {
+        val created = Instant.ofEpochMilli(l.createdTimestamp)
+        val yearMonth = YearMonth.from(created)
+        ((l.language, yearMonth.getYear, yearMonth.getMonthValue), (l.sentiment, 1))
+      })
 
     sparkSession.stop()
   }
