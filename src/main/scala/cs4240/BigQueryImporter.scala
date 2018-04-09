@@ -31,6 +31,7 @@ object BigQueryImporter {
     f"$commentInfoRoot${BigQueryStrings.parseTableReference(fullyQualifiedInputTableId).getTableId}/"
 
   def run(fullyQualifiedInputTableIds: Array[String]): Unit = {
+    println(f"Running import on ${fullyQualifiedInputTableIds.mkString(" ")} ...")
     val sparkSession = SparkSession.builder.appName("cs4240-bigquery-importer").getOrCreate
     import sparkSession.implicits._
 
@@ -58,7 +59,7 @@ object BigQueryImporter {
 
       val commentInfo = tableData.flatMap({ case (_, json) => rawJsonToCommentInfo(json) })
 
-      commentInfo.toDF.write.mode(SaveMode.Overwrite).parquet(commentInfoLocation(fullyQualifiedInputTableId))
+      commentInfo.toDF.write.parquet(commentInfoLocation(fullyQualifiedInputTableId))
     })
 
     sparkSession.stop()
