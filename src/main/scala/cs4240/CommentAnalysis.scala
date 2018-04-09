@@ -104,14 +104,22 @@ object CommentAnalysis {
     val oldLanguages = Set("cobol", "fortran", "ada", "assembly")
     val stdLanguages = Set("c", "c++", "java", "python")
     val newLanguages = Set("scala", "go", "swift", "kotlin", "rust")
-    lazy val oldSentOvertime =
+    lazy val oldSentOvertime = timeSentOfSet(oldLanguages)
+    lazy val stdSentOvertime = timeSentOfSet(stdLanguages)
+    lazy val newSentOvertime = timeSentOfSet(newLanguages)
+
+    //(Language, YYYY-mm , avg senti)
+    def timeSentOfSet(set: Set[String]): RDD[(String, String, Double)] = {
       langScoresInfo
-      .filter(l => oldLanguages.contains(l.language))
-      .map(l => {
-        val created = Instant.ofEpochMilli(l.createdTimestamp)
-        val yearMonth = YearMonth.from(created)
-        ((l.language, yearMonth.getYear, yearMonth.getMonthValue), (l.sentiment, 1))
-      })
+        .filter(l => set.contains(l.language))
+        .map(l => {
+          val created = Instant.ofEpochMilli(l.createdTimestamp)
+          val yearMonth = YearMonth.from(created)
+          ((l.language, yearMonth.getYear, yearMonth.getMonthValue), (l.sentiment, 1))
+        }).reduceByKey((l, r) => {
+        (l._1 + r._1, l._2 + r._2)
+      }).map({case ((l, y, m), (s, t)) => (l, y + "-" + "%02d".format(m), 1.0 * s / t)})
+    }
 
     sparkSession.stop()
   }
