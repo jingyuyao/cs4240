@@ -17,7 +17,8 @@ object CommentAnalysis {
       //TODO decide what to persist
 
       lazy val langScoresInfo : RDD[LanguageUsageInfo] = commentInfo.rdd.flatMap(info => {
-        val totalSentiScore = info.sentiment.split(",").map(_.toInt).sum
+        val avgSentiScore = if (info.sentiment.nonEmpty) info.sentiment.split(",").map(_.toInt).sum / info.sentiment.length
+                            else 2 //Neutral
         info.keywordList.split(",").map(word => {
           LanguageUsageInfo(
             language = word,
@@ -26,13 +27,13 @@ object CommentAnalysis {
             createdTimestamp = info.createdTimestamp,
             timesGilded = info.timesGilded,
             score = info.score,
-            sentiment = totalSentiScore
+            sentiment = avgSentiScore
           )
         })
       })
 
       /**
-        * (Langauge (Avg Score, Avg Gildings, Avg Senti))
+        * (Language (Avg Score, Avg Gildings, Avg Senti))
         */
       lazy val langOverall : RDD[(String, (Double, Double, Double))] = {
         langScoresInfo.map(usage => {
@@ -75,6 +76,8 @@ object CommentAnalysis {
       langOverall.sortBy(_._2._3, ascending = false).take(10).map({case (lang, avgs) =>
         (lang, avgs._3)
       }).foreach({case (lang, sentiAvg) => println(f"$lang $sentiAvg")})
+
+
     })
 
     sparkSession.stop()
