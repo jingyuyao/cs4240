@@ -1,9 +1,16 @@
 package cs4240
 
-import java.time.{Instant, YearMonth}
+import java.io.PrintWriter
+import java.net.URI
+import java.time.{Instant, LocalDateTime, ZoneId}
 
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{DataFrame, SparkSession}
+import vegas._
+import vegas.render.{ShowRender, StaticHTMLRenderer}
+import vegas.sparkExt._
 
 object CommentAnalysis {
 
@@ -32,7 +39,7 @@ object CommentAnalysis {
           sentiment = avgSentiScore
         )
       })
-    })
+    }).cache()
 
     /**
       * (Language (Avg Score, Avg Gildings, Avg Senti))
@@ -93,34 +100,64 @@ object CommentAnalysis {
         .reduceByKey((l, r) => if (l._2 > r._2) l else r)
         .sortBy(_._1)
 
-//    mostLovePerSub.collect().foreach(println)
+    //    mostLovePerSub.collect().foreach(println)
 
     lazy val classicJvC =
       subLangPairs
         .filter(d => (d._1._2 == "java" && d._1._1 == "c++") || (d._1._2 == "cpp" && d._1._1 == "java"))
 
-    classicJvC.collect().foreach(println)
+    //    classicJvC.collect().foreach(println)
 
     val oldLanguages = Set("cobol", "fortran", "ada", "assembly")
     val stdLanguages = Set("c", "c++", "java", "python")
     val newLanguages = Set("scala", "go", "swift", "kotlin", "rust")
+
+    //(Language, YYYY-mm , avg senti)
+    def timeSentOfSet(set: Set[String]): DataFrame = {
+      langScoresInfo
+        .filter(l => set.contains(l.language))
+        .map(l => {
+          val created = Instant.ofEpochSecond(l.createdTimestamp)
+          val local = LocalDateTime.ofInstant(created, ZoneId.systemDefault())
+          ((l.language, local.getYear, local.getMonthValue), (l.sentiment, 1))
+        })
+        .reduceByKey((l, r) => {
+          (l._1 + r._1, l._2 + r._2)
+        })
+        .map({ case ((l, y, m), (s, t)) => (l, y + "-" + "%02d".format(m), 1.0 * s / t) })
+        .toDF("language", "time", "sentiment")
+    }
+
+    def plotOverTime(timeline: DataFrame, name: String): Unit =
+      Vegas(width = 1000.0, height = 800.0)
+        .withDataFrame(timeline)
+        .mark(Line)
+        .encodeX("time", Temporal)
+        .encodeY("sentiment", Quantitative)
+        .encodeColor("language", Nominal)
+        .show(htmlPageRenderer(name, sparkSession.sparkContext.hadoopConfiguration))
+
     lazy val oldSentOvertime = timeSentOfSet(oldLanguages)
     lazy val stdSentOvertime = timeSentOfSet(stdLanguages)
     lazy val newSentOvertime = timeSentOfSet(newLanguages)
 
-    //(Language, YYYY-mm , avg senti)
-    def timeSentOfSet(set: Set[String]): RDD[(String, String, Double)] = {
-      langScoresInfo
-        .filter(l => set.contains(l.language))
-        .map(l => {
-          val created = Instant.ofEpochMilli(l.createdTimestamp)
-          val yearMonth = YearMonth.from(created)
-          ((l.language, yearMonth.getYear, yearMonth.getMonthValue), (l.sentiment, 1))
-        }).reduceByKey((l, r) => {
-        (l._1 + r._1, l._2 + r._2)
-      }).map({case ((l, y, m), (s, t)) => (l, y + "-" + "%02d".format(m), 1.0 * s / t)})
-    }
+    plotOverTime(oldSentOvertime, "old_languages")
+    plotOverTime(stdSentOvertime, "std_languages")
+    plotOverTime(newSentOvertime, "new_languages")
 
     sparkSession.stop()
   }
+
+  private def htmlPageRenderer(name: String, conf: Configuration): ShowRender = vegas.render.ShowRender.using(sb => {
+    val fs = FileSystem.get(new URI("gs://cs4240-jm-parquet"), conf)
+    val file = new Path(f"gs://cs4240-jm-parquet/analysis/$name.html")
+    if (fs.exists(file))
+      fs.delete(file, true)
+    val os = fs.create(file)
+    val pw = new PrintWriter(os)
+    val html = StaticHTMLRenderer(sb.toJson).pageHTML()
+    pw.write(html)
+    pw.close()
+    fs.close()
+  })
 }
