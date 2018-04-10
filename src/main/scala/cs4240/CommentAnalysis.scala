@@ -82,7 +82,8 @@ object CommentAnalysis {
           (lang, avgs._3)
         })
 
-    //    topLanguages.take(10).foreach({ case (lang, sentiAvg) => println(f"$lang $sentiAvg") })
+    println("top languages")
+    topLanguages.take(10).foreach({ case (lang, sentiAvg) => println(f"$lang $sentiAvg") })
 
     lazy val mostHatedPerSub: RDD[(String, (String, Double))] =
       subLangPairs
@@ -91,7 +92,8 @@ object CommentAnalysis {
         .reduceByKey((l, r) => if (l._2 < r._2) l else r)
         .sortBy(_._1)
 
-    //    mostHatedPerSub.collect().foreach(println)
+    println("most hated subs")
+    mostHatedPerSub.collect().foreach(println)
 
     lazy val mostLovePerSub: RDD[(String, (String, Double))] =
       subLangPairs
@@ -100,13 +102,15 @@ object CommentAnalysis {
         .reduceByKey((l, r) => if (l._2 > r._2) l else r)
         .sortBy(_._1)
 
-    //    mostLovePerSub.collect().foreach(println)
+    println("most loved subs")
+    mostLovePerSub.collect().foreach(println)
 
     lazy val classicJvC =
       subLangPairs
         .filter(d => (d._1._2 == "java" && d._1._1 == "c++") || (d._1._2 == "cpp" && d._1._1 == "java"))
 
-    //    classicJvC.collect().foreach(println)
+    println("java vs c++")
+    classicJvC.collect().foreach(println)
 
     val oldLanguages = Set("cobol", "fortran", "ada", "assembly")
     val stdLanguages = Set("c", "c++", "java", "python")
@@ -141,9 +145,10 @@ object CommentAnalysis {
     lazy val stdSentOvertime = timeSentOfSet(stdLanguages)
     lazy val newSentOvertime = timeSentOfSet(newLanguages)
 
-    plotOverTime(oldSentOvertime, "old_languages")
-    plotOverTime(stdSentOvertime, "std_languages")
-    plotOverTime(newSentOvertime, "new_languages")
+    //    println("plotting over times")
+    //    plotOverTime(oldSentOvertime, "old_languages")
+    //    plotOverTime(stdSentOvertime, "std_languages")
+    //    plotOverTime(newSentOvertime, "new_languages")
 
     sparkSession.stop()
   }
