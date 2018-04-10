@@ -44,36 +44,41 @@ object CommentAnalysis {
     /**
       * (Language (Avg Score, Avg Gildings, Avg Senti))
       */
-    lazy val langOverall: RDD[(String, (Double, Double, Double))] = {
-      langScoresInfo.map(usage => {
-        (usage.language, (usage.score, usage.timesGilded, usage.sentiment, 1))
-      }).reduceByKey({ case ((scoreA, gildA, sentiA, countA), (scoreB, gildB, sentiB, countB)) =>
-        (scoreA + scoreB,
-          gildA + gildB,
-          sentiA + sentiB,
-          countA + countB
-        )
-      }).mapValues({ case (score, gild, senti, count) =>
-        (1.0 * score / count, 1.0 * gild / count, 1.0 * senti / count)
-      })
-    }
+    lazy val langOverall: RDD[(String, (Double, Double, Double))] =
+      langScoresInfo
+        .map(usage => {
+          (usage.language, (usage.score, usage.timesGilded, usage.sentiment, 1))
+        })
+        .reduceByKey({ case ((scoreA, gildA, sentiA, countA), (scoreB, gildB, sentiB, countB)) =>
+          (scoreA + scoreB,
+            gildA + gildB,
+            sentiA + sentiB,
+            countA + countB
+          )
+        })
+        .mapValues({ case (score, gild, senti, count) =>
+          (1.0 * score / count, 1.0 * gild / count, 1.0 * senti / count)
+        })
 
     /**
       * ((Langauge, Subreddit), (Avg Score, Avg Gildings, Avg Sentiment))
       */
-    lazy val subLangPairs: RDD[((String, String), (Double, Double, Double, Int))] = {
-      langScoresInfo.map(usage => {
-        ((usage.language, usage.subreddit), (usage.score, usage.timesGilded, usage.sentiment, 1))
-      }).reduceByKey({ case ((scoreA, gildA, sentiA, countA), (scoreB, gildB, sentiB, countB)) =>
-        (scoreA + scoreB,
-          gildA + gildB,
-          sentiA + sentiB,
-          countA + countB
-        )
-      }).mapValues({ case (score, gild, senti, count) =>
-        (1.0 * score / count, 1.0 * gild / count, 1.0 * senti / count, count)
-      })
-    }
+    lazy val subLangPairs: RDD[((String, String), (Double, Double, Double, Int))] =
+      langScoresInfo
+        .map(usage => {
+          ((usage.language, usage.subreddit), (usage.score, usage.timesGilded, usage.sentiment, 1))
+        })
+        .reduceByKey({ case ((scoreA, gildA, sentiA, countA), (scoreB, gildB, sentiB, countB)) =>
+          (scoreA + scoreB,
+            gildA + gildB,
+            sentiA + sentiB,
+            countA + countB
+          )
+        })
+        .mapValues({ case (score, gild, senti, count) =>
+          (1.0 * score / count, 1.0 * gild / count, 1.0 * senti / count, count)
+        })
+        .cache()
 
     lazy val topLanguages =
       langOverall
@@ -82,8 +87,8 @@ object CommentAnalysis {
           (lang, avgs._3)
         })
 
-    println("top languages")
-    topLanguages.take(10).foreach({ case (lang, sentiAvg) => println(f"$lang $sentiAvg") })
+    //    println("top languages")
+    //    topLanguages.take(10).foreach({ case (lang, sentiAvg) => println(f"$lang $sentiAvg") })
 
     lazy val mostHatedPerSub: RDD[(String, (String, Double))] =
       subLangPairs
@@ -92,8 +97,8 @@ object CommentAnalysis {
         .reduceByKey((l, r) => if (l._2 < r._2) l else r)
         .sortBy(_._1)
 
-    println("most hated subs")
-    mostHatedPerSub.collect().foreach(println)
+    //    println("most hated subs")
+    //    mostHatedPerSub.collect().foreach(println)
 
     lazy val mostLovePerSub: RDD[(String, (String, Double))] =
       subLangPairs
@@ -102,15 +107,15 @@ object CommentAnalysis {
         .reduceByKey((l, r) => if (l._2 > r._2) l else r)
         .sortBy(_._1)
 
-    println("most loved subs")
-    mostLovePerSub.collect().foreach(println)
+    //    println("most loved subs")
+    //    mostLovePerSub.collect().foreach(println)
 
     lazy val classicJvC =
       subLangPairs
         .filter(d => (d._1._2 == "java" && d._1._1 == "c++") || (d._1._2 == "cpp" && d._1._1 == "java"))
 
-    println("java vs c++")
-    classicJvC.collect().foreach(println)
+    //    println("java vs c++")
+    //    classicJvC.collect().foreach(println)
 
     val oldLanguages = Set("cobol", "fortran", "ada", "assembly")
     val stdLanguages = Set("c", "c++", "java", "python")
@@ -149,6 +154,31 @@ object CommentAnalysis {
     //    plotOverTime(oldSentOvertime, "old_languages")
     //    plotOverTime(stdSentOvertime, "std_languages")
     //    plotOverTime(newSentOvertime, "new_languages")
+
+    lazy val viewOfScala =
+      subLangPairs
+        .filter(_._1._1 == "scala")
+        .map({ case (langSub, scores) => (langSub._2, scores._3) })
+        .sortBy(_._2)
+        .toDF("subreddit", "sentiment")
+    lazy val scalaViewOf =
+      subLangPairs
+        .filter(_._1._2 == "scala")
+        .map({ case (langSub, scores) => (langSub._1, scores._3) })
+        .sortBy(_._2)
+        .toDF("language", "sentiment")
+
+    def scalaBarPlot(df: DataFrame, x: String, name: String): Unit =
+      Vegas(width = 1000.0, height = 800.0)
+        .withDataFrame(df)
+        .mark(Bar)
+        .encodeX(x, Nominal)
+        .encodeY("sentiment", Quantitative)
+        .show(htmlPageRenderer(name, sparkSession.sparkContext.hadoopConfiguration))
+
+    println("plotting scala deep dive")
+    scalaBarPlot(viewOfScala, "subreddit", "view_of_scala")
+    scalaBarPlot(scalaViewOf, "language", "scala_view_of")
 
     sparkSession.stop()
   }
